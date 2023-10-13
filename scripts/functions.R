@@ -1,4 +1,70 @@
 
+# Function to relabel values in a variable based on full string containment
+relabel_values_containment <- function(df, mapping_df, variable_name) {
+  # Convert to character for string matching
+  df[[variable_name]] <- as.character(df[[variable_name]])
+  mapping_df$search_string <- as.character(mapping_df$search_string)
+  mapping_df$new_string <- as.character(mapping_df$new_string)
+  
+  # Loop through each search_string and new_string pair in the mapping_df
+  for(i in 1:nrow(mapping_df)) {
+    search_str <- mapping_df$search_string[i]
+    new_str <- mapping_df$new_string[i]
+    
+    # Identify rows where the entire search string is contained within the variable's value
+    matching_rows <- str_detect(df[[variable_name]], fixed(search_str, ignore_case = TRUE))
+    
+    # Update those rows with the new string
+    df[[variable_name]][matching_rows] <- new_str
+  }
+  
+  return(df)
+}
+
+# Function to load Excel sheets into a list of data frames
+load_excel_sheets <- function(file_path) {
+  sheet_names <- excel_sheets(file_path)
+  df_list <- lapply(setNames(sheet_names, sheet_names), function(x) read_excel(file_path, sheet=x))
+  return(df_list)
+}
+
+# Function to filter and manipulate data
+process_data <- function(df_list, col_keep_base, dis_vars, status_label) {
+  col_keep <- c(col_keep_base, dis_vars)
+  
+  # Filter out rows where second column is NA
+  filtered_df_list <- lapply(df_list, function(df) {
+    df[!is.na(df[[2]]), ]
+  })
+  
+  # Bind all the filtered data frames together
+  df_wide <- bind_rows(filtered_df_list, .id="sheet")
+  
+  # Store all columns as character
+  df_wide <- df_wide %>% mutate(across(everything(), as.character))
+  
+  # Add empty variables to the dataframe when they don't exist
+  variables_to_add <- col_keep[!col_keep %in% names(df_wide)]
+  df_wide <- add_empty_vars(df_wide, variables_to_add)
+  
+  # Pivot longer
+  df_long <- pivot_longer(df_wide, cols = -one_of(col_keep), names_to = "choice_label", values_to = "result") %>%
+    filter(!is.na(result)) %>% 
+    mutate(disp_status = status_label)
+  
+  return(df_long)
+}
+
+align_and_add_missing_cols <- function(df, all_cols) {
+  missing_cols <- setdiff(all_cols, colnames(df))
+  for (col in missing_cols) {
+    df[[col]] <- NA
+  }
+  # Reorder columns to match 'all_cols' for consistency
+  df <- df[, all_cols, drop=FALSE]
+  return(df)
+}
+
 # Function to relabel values in a variable based on a mapping data frame
 relabel_values <- function(df, mapping_df, variable_name) {
   # Convert to character for string matching
@@ -32,7 +98,7 @@ add_empty_vars <- function(df, variables_to_add) {
 }
 
 # Create theme
-theme_longit_bars_vert <- function (base_size = 11, base_family = "Leelawadee", ticks = TRUE) 
+theme_longit_bars_vert <- function (base_size, base_family = "Leelawadee", ticks = TRUE) 
 {
   ret <- theme_bw(base_family = base_family, base_size = base_size) + 
     theme(
@@ -55,12 +121,6 @@ theme_longit_bars_vert <- function (base_size = 11, base_family = "Leelawadee", 
   ret
 }
 
-
-# Sub-function to create custom color palette
-create_custom_palette <- function(color_start, color_end, n) {
-  interpolator <- colorRampPalette(c(color_start, color_end))
-  return(interpolator(n))
-}
 
 label_wrap <- function(width = 20, max_lines = 3) {
   function(x) {
@@ -97,327 +157,467 @@ sanitize_title <- function(title) {
   return(sanitized_title)
 }
 
-# Function to create and save vertical bar graphs with percentages
-create_bar_graph_vertical <- function(data_df, params_df, round_latest, output_folder, color_start, color_end) {
-  
-  # Convert to ordered factor for comparison
-  data_df$round <- factor(data_df$round, levels = c("overall", as.character(1:50)), ordered = TRUE)
-  
-  # Validate that mandatory columns exist
+# Data validation function
+validate_data <- function(data_df, params_df) {
+  # Validation logic
   required_cols_data <- c("question_code", "choice_label", "result", "round", "num_samples", "disp_status")
   required_cols_params <- c("title", "graph_type", "result_type", "disp_status", "main_variable", "top", 
-                            "data_labels", "exclude_pns",	"exclude_dk",	"exclude_other", "wrap_title") 
+                            "data_labels", "exclude_pns", "exclude_dk", "exclude_other", "wrap_title", "label_orientation") 
   
-  if (!all(required_cols_data %in% names(data_df)) || !all(required_cols_params %in% names(params_df))) {
-    stop("Required columns missing in data or parameter dataframe.")
+  missing_data_cols <- setdiff(required_cols_data, names(data_df))
+  missing_params_cols <- setdiff(required_cols_params, names(params_df))
+  
+  if (length(missing_data_cols) > 0 || length(missing_params_cols) > 0) {
+    if (length(missing_data_cols) > 0) {
+      stop(paste("Validation failed. Missing columns in data_df: ", paste(missing_data_cols, collapse = ", ")))
+    }
+    if (length(missing_params_cols) > 0) {
+      stop(paste("Validation failed. Missing columns in params_df: ", paste(missing_params_cols, collapse = ", ")))
+    }
+  }
+  return(TRUE)
+}
+
+
+# Data filtering function
+filter_data <- function(data_df, params, df_rounds, round_latest, round_previous) {
+  # Filter based on main variable and disp_status
+  filtered_df <- data_df %>% 
+    filter(
+      question_code == params$main_variable,
+      disp_status == params$disp_status
+    )
+  
+  # Exclude 'other' labels if specified
+  if (!is.na(params$exclude_other) && tolower(params$exclude_other) == 'yes') {
+    exclude_other_labels <- c("other (please_specify)", "other (please specify)", "Other (please specify)", "other", "Other")
+    filtered_df <- filtered_df %>% filter(!choice_label %in% exclude_other_labels)
   }
   
-  custom_order <- c('0', '1', '2', '3', '4', '4+', '5', '5+', '6', '6+', '7', '7+', '8', '8+', '9', '9+', '10', '10+')
+  # Exclude 'dk' labels if specified
+  if (!is.na(params$exclude_dk) && tolower(params$exclude_dk) == 'yes') {
+    exclude_dk_labels <- c("don't know", "Don't know", "dk")
+    filtered_df <- filtered_df %>% filter(!grepl(paste(exclude_dk_labels, collapse="|"), choice_label, ignore.case = TRUE))
+  }
+  
+  # Exclude 'pns' labels if specified
+  if (!is.na(params$exclude_pns) && tolower(params$exclude_pns) == 'yes') {
+    exclude_pns_labels <- c("Prefer not to say", "prefer not to say", "pns")
+    filtered_df <- filtered_df %>% filter(!choice_label %in% exclude_pns_labels)
+  }
+  
+  # Convert the round column to character in both dataframes
+  filtered_df$round <- as.character(filtered_df$round)
+  df_rounds$round <- as.character(df_rounds$round)
+  
+  # Join to get the month information and sample sizes
+  filtered_df <- filtered_df %>% 
+    left_join(df_rounds, by = "round")
+  
+  # Extract unique month values from df_rounds in the order they appear
+  ordered_months <- unique(df_rounds$month)
+  
+  # Convert the 'month' column in filtered_df to an ordered factor
+  filtered_df$month <- factor(filtered_df$month, levels = ordered_months, ordered = TRUE)
+  
+  # Filter for rounds
+  if (as.character(params$latest_round) == "latest" && as.character(params$earliest_round) == "latest") {
+    filtered_df <- filtered_df %>% filter(round %in% round_latest)
+  } else {
+    # Replace 'latest' or 'previous' with actual values from round_latest or round_previous
+    earliest_round <- ifelse(as.character(params$earliest_round) == "previous", round_previous, as.character(params$earliest_round))
+    latest_round <- ifelse(as.character(params$latest_round) == "latest", round_latest, as.character(params$latest_round))
+    
+    # Convert to numeric for calculations
+    earliest_round_num <- as.numeric(earliest_round)
+    latest_round_num <- as.numeric(latest_round)
+    
+    # Calculate the total number of rounds between earliest and latest
+    total_rounds <- latest_round_num - earliest_round_num + 1
+    
+    # Check if rounds_skipped is NA
+    if (!is.na(params$rounds_skipped)) {
+      # Calculate how many rounds would be included with the given 'rounds_skipped'
+      rounds_included <- floor((total_rounds - 1) / (as.numeric(params$rounds_skipped) + 1)) + 1
+      
+      # If at least two rounds would be included, proceed to generate the sequence
+      if (rounds_included >= 2) {
+        rounds_to_include <- seq(from = earliest_round_num, to = latest_round_num, by = as.numeric(params$rounds_skipped) + 1)
+      } else {
+        message(paste("The number of rounds to be skipped (", params$rounds_skipped, ") would result in fewer than two rounds being included for comparison. Skipping not considered."))
+        rounds_to_include <- seq(from = earliest_round_num, to = latest_round_num)
+      }
+    } else {
+      # If rounds_skipped is NA, generate a sequence without considering it
+      rounds_to_include <- seq(from = earliest_round_num, to = latest_round_num)
+    }
+    
+    # Convert to character for filtering
+    filtered_rounds <- as.character(rounds_to_include)
+    filtered_df <- filtered_df %>% filter(round %in% filtered_rounds)
+    
+  }
+  
+  return(filtered_df)
+}
+
+# Rank assignment function
+assign_ranks <- function(filtered_df, custom_order, custom_order2, top_n = NULL) {
+  
+  # Check if any of the custom labels from custom_order are present in choice_label
+  if (any(filtered_df$choice_label %in% custom_order)) {
+    # Create a custom rank based on custom_order
+    filtered_df <- filtered_df %>% 
+      mutate(rank = match(choice_label, custom_order))
+  } 
+  
+  # Check if all of the custom labels from custom_order2 are present in choice_label
+  else if (all(custom_order2 %in% filtered_df$choice_label)) {
+    # Create a custom rank based on custom_order2
+    filtered_df <- filtered_df %>% 
+      mutate(rank = match(choice_label, custom_order2))
+  } 
+  
+  else {
+    # Get the rank from the latest round data
+    latest_round_data <- filtered_df %>% filter(round == round_latest) %>% 
+      arrange(desc(result)) %>% 
+      mutate(rank = row_number())
+    
+    # Update rank in filtered_df based on latest round's result
+    filtered_df <- filtered_df %>% 
+      left_join(latest_round_data %>% select(choice_label, rank), by = "choice_label")
+  }
+  
+  # If 'top' is not NA and not an empty string, and is smaller than the total number of unique choice_labels
+  if (!is.null(top_n) && top_n < length(unique(filtered_df$choice_label))) {
+    top_labels <- latest_round_data %>% 
+      arrange(rank) %>% 
+      head(top_n) %>% 
+      pull(choice_label)
+    
+    filtered_df <- filtered_df %>% 
+      filter(choice_label %in% top_labels)
+  }
+  
+  return(filtered_df)
+}
+
+# Function to create custom color palette
+create_custom_palette <- function(color_start, color_end, n) {
+  interpolator <- colorRampPalette(c(color_start, color_end))
+  return(interpolator(n))
+}
+
+# Custom y-label formatting function
+format_y_labels <- function(x, y_labels) {
+  if (y_labels == "percent") {
+    return(scales::percent(x))
+  } else if (y_labels == "integer") {
+    return(scales::comma(x))
+  } else {
+    return(x)
+  }
+}
+
+# Customize plot function
+customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines, num_rounds, color_start, color_end, font_family, base_size) {
+  
+  # Determine dodge_width based on conditions
+  if (as.character(params$latest_round) != "latest" || as.character(params$earliest_round) != "latest") {
+    dodge_width <- 0.8
+  } else {
+    dodge_width <- 0.9  # You can set this to a default value or another conditional value
+  }
+  
+  # Calculate plot_width and adjusted_height here
+  if (as.character(params$latest_round) != "latest" || as.character(params$earliest_round) != "latest") {
+    plot_width <- 10  # Default plot width for grouped graphs
+  } else {
+    # Determine the number of unique bars (num_choices)
+    if (num_choices < 5) {
+      plot_width <- 5
+    } else {
+      plot_width <- 10
+    }
+  }
+  
+  # Determine conditions for reducing font size
+  max_label_length <- max(nchar(unique(filtered_df$choice_label)))
+  
+  # Set a fixed or calculated font size for y-axis labels
+  y_axis_font_size <- base_size
+  
+  # Conditionally set font size
+  font_size_value <- ifelse(max_label_length > 20 || 
+                              num_choices > 8 || 
+                              num_rounds > 8, 9, y_axis_font_size)
+  
+  # Ensure the font size for x-axis labels is not larger than y-axis labels
+  font_size_value <- min(font_size_value, y_axis_font_size)  # Take the minimum of calculated and y-axis font size
+  
+  # Initialize angle_value
+  angle_value <- 50  # default
+  
+  # Set angle_value based on conditions
+  if (num_choices < 6 |
+      max_label_length < 4 |
+      (!is.na(params$label_orientation) & 
+       params$label_orientation == "horizontal")) {
+    angle_value <- 0
+  } else if (!is.na(params$label_orientation) & params$label_orientation == "diagonal") {
+    angle_value <- 50
+  }
+  
+  # Function to wrap labels at 8 characters
+  label_wrap_8 <- function(x) {
+    sapply(x, function(single_x) {
+      stringr::str_wrap(single_x, 8)
+    })
+  }
+  
+  # Determine vertical justification based on angle
+  vjust_value <- ifelse(angle_value == 0, 0.5, 0.5)
+  
+  # Generate custom palette
+  chosen_palette <- create_custom_palette(color_start, color_end, num_rounds)
+  
+  # Generate legend labels based on month and num_samples in filtered_df
+  legend_labels <- paste0(unique(filtered_df$month), " (N=", scales::comma(unique(filtered_df$num_samples)), ")")
+  
+  # Check for wrap_title being 'no'
+  if (!is.na(params$wrap_title) & tolower(as.character(params$wrap_title)) == 'no') {
+    wrapped_title_text <- params$title  # Use the original title without wrapping
+    adjusted_height <- 6  # Default height
+    
+  } else if (is.na(params$wrap_title) || tolower(as.character(params$wrap_title)) == 'yes') {
+    
+    # Calculate the wrap width based on the plot width
+    wrap_width <- ifelse(plot_width < 10, 40, 70)
+    wrapped_title <- strwrap(params$title, width = wrap_width)  # Dynamic wrapping width
+    
+    num_title_lines <- length(wrapped_title)  # Calculate the number of lines in the title
+    wrapped_title_text <- paste(wrapped_title, collapse = "\n")  # Concatenate lines with newline characters
+    
+    # Determine the height of the graph based on the number of title lines
+    adjusted_height <- 6 + 0.5 * (num_title_lines - 1)  # Increase the height by 0.5 unit per extra line
+  } else {
+    wrapped_title_text <- params$title  # Use the original title
+    adjusted_height <- 6  # Default height
+  }
+  
+  p <- p + theme(
+    axis.text.x = element_text(
+      angle = angle_value,  # Conditionally set angle
+      hjust = 0.5,  # center-align
+      vjust = vjust_value,  # Vertically adjust labels
+      size = font_size_value,  # Conditionally set font size
+      margin = margin(t = 10, r = 10, b = 10, l = 10),  # Add space around labels
+      family = font_family  # Set font family
+    ),
+    plot.margin = margin(1, 1, 1.5, 1, "cm"),  # Increase bottom margin of the plot
+    plot.title = element_text(vjust = 2, family = font_family),  # Set font family for title
+    axis.text.y = element_text(family = font_family), # Set font family for y-axis text
+    axis.title.x=element_blank(), 
+    axis.title.y=element_blank() 
+  )
+  
+  # Add subtitle only if there is one round
+  if (num_rounds == 1) {
+    single_round_month <- unique(filtered_df$month)
+    single_round_samples <- unique(filtered_df$num_samples)
+    p <- p + labs(subtitle = paste0(single_round_month, " (N=", scales::comma(single_round_samples), ")"))
+  }
+  
+  # Add data labels based on conditions and params$data_labels
+  if (is.na(params$data_labels)) {
+    # Default behavior: Show labels only for the latest round
+    
+    latest_round_data <- filtered_df %>% filter(round == max(round))
+    if(num_rounds == 1) {
+      # Ungrouped graph, center the label
+      p <- p + geom_text(
+        data = latest_round_data,
+        aes(label = format_label(result, params$result_type), group = round),
+        size = 3,
+        vjust = -1,
+        hjust = 0.5  # Center the label
+      )
+    } else {
+      # Grouped graph
+      # Determine adj_val based on the number of rounds and choice labels
+      if (num_choices <= 3) {
+        adj_val <- 4 + 0.5 * (3 - num_choices)
+      } else if (num_choices <= 6) {
+        adj_val <- 4 + 0.35 * (6 - num_choices)  # Increased base value for 4-6 groups
+      } else {
+        adj_val <- 3 - 0.25 * (num_rounds - 2)
+      }
+      
+      p <- p + geom_text(
+        data = latest_round_data,
+        aes(label = format_label(result, params$result_type), group = round),
+        size = 3,
+        vjust = -1,
+        nudge_x = dodge_width / adj_val  # Adjust the label's position
+      )
+    }
+  } else {
+    add_data_labels <- tolower(as.character(params$data_labels))
+    
+    if (add_data_labels == 'yes') {
+      # Show labels for all rounds
+      p <- p + geom_text(
+        aes(label = format_label(result, params$result_type), group = round),
+        size = 3,
+        vjust = -1,
+        position = position_dodge(dodge_width)  # This line ensures the labels are dodged like the bars
+      )
+    } else if (add_data_labels == 'no') {
+      # Do not add any labels
+    }
+  }
+  
+  
+  # Add title and legend
+  p <- p + labs(
+    title = wrapped_title_text,  # Make sure this variable is defined based on 'wrap_title'
+    fill = "Round"  # Legend title
+  ) + scale_fill_manual(values = chosen_palette, labels = legend_labels)  # Custom legend
+  
+  # Add custom y-axis labels
+  y_labels <- params$result_type  # Assume params has a result_type that can be 'percent', 'integer', etc.
+  p <- p + scale_y_continuous(labels = function(x) format_y_labels(x, y_labels), expand = expand_scale(mult = c(0, 0.1)))
+  
+  # Add custom x-axis labels
+  if (angle_value == 0) {
+    p <- p + scale_x_discrete(labels = label_wrap_8)  # Wrap at 8 characters
+  } else {
+    p <- p + scale_x_discrete(labels = label_wrap(width = 30))
+  }
+  
+  return(list(customized_plot = p, plot_width = plot_width, adjusted_height = adjusted_height))
+}
+
+# File operations function
+handle_file_ops <- function(p, params, output_folder, plot_width, adjusted_height) {
+  # Determine the subfolder based on the "disp_status" column
+  subfolder <- ifelse(params$disp_status == "refugee", "refugees", 
+                      ifelse(params$disp_status == "returnee", "returnees", "overall"))
+  
+  # Default file extension
+  file_extension <- ".png"
+  
+  # Generate sanitized, lowercase file name from title
+  sanitized_title <- sanitize_title(params$title)
+  
+  # Check the length of the sanitized title
+  max_title_length <- 50  # You can adjust this limit as needed
+  if (nchar(sanitized_title) > max_title_length) {
+    sanitized_title <- substr(sanitized_title, 1, max_title_length)
+    message("Sanitized title truncated due to excessive length.")
+  }
+  
+  # Combine sanitized title with file extension
+  output_file_name <- paste0(sanitized_title, file_extension)
+  
+  # Create the subfolder if it doesn't exist
+  subfolder_path <- file.path(output_folder, subfolder)
+  if (!dir.exists(subfolder_path)) {
+    dir.create(subfolder_path)
+  }
+  
+  # Generate the full output file path including subfolder
+  output_file_path <- file.path(subfolder_path, output_file_name)
+  
+  # Save the plot in PNG format
+  ggplot2::ggsave(output_file_path, plot = p, device = "png", width = plot_width, height = adjusted_height)
+  
+  if (file.exists(output_file_path)) {
+    message(paste("Successfully created graph:", output_file_path))
+    return(TRUE)
+  } else {
+    message(paste("Failure: Could not export graph as", output_file_path))
+    return(FALSE)
+  }
+}
+
+
+# Main function
+create_bar_graph_vertical <- function(data_df, params_df, round_latest, output_folder, color_start, color_end, font_family) {
+  
+  # Validate the data
+  if (!validate_data(data_df, params_df)) {
+    stop("Validation failed.")
+  }
+  
+  custom_order <- c('0', '1', '2', '3', '4', '4+', '5', '5+', '6', '6+', '7', '7+', '8', '8+', '9', '9+', '10', '10+'
+                    )
+  
+  custom_order2 <- c("Completely safe", "Somewhat safe", "Somewhat unsafe", "Completely unsafe", "I prefer not to say"
+  )
   
   # Loop through each row in params_df
   for (i in seq_len(nrow(params_df))) {
     params <- params_df[i, , drop = FALSE]
     
-    # Check if the graph should be created based on graph_type and result_type
-    if (params$graph_type != "bar" || !(params$result_type %in% c("percent", "integer")) || params$orientation != "vertical") {
-      message(paste("Skipping due to incompatible graph_type, orientation or result_type"))
-      next
-    }
-    
     # Filter the data
-    filtered_df <- data_df %>% 
-      filter(
-        question_code == params$main_variable,
-        disp_status == params$disp_status
-      )
-    
-    # Check for exclusion criteria based on parameters
-    if (!is.na(params$exclude_other) && tolower(params$exclude_other) == 'yes') {
-      exclude_other_labels <- c("other (please_specify)", "other (please specify)", "Other (please specify)", "other", "Other")
-      filtered_df <- filtered_df %>% filter(!choice_label %in% exclude_other_labels)
-    }
-    
-    if (!is.na(params$exclude_dk) && tolower(params$exclude_dk) == 'yes') {
-      exclude_dk_labels <- c("don't know", "Don't know", "dk")
-      filtered_df <- filtered_df %>% filter(!grepl(paste(exclude_dk_labels, collapse="|"), choice_label, ignore.case = TRUE))
-    }
-    
-    if (!is.na(params$exclude_pns) && tolower(params$exclude_pns) == 'yes') {
-      exclude_pns_labels <- c("Prefer not to say", "prefer not to say", "pns")
-      filtered_df <- filtered_df %>% filter(!choice_label %in% exclude_pns_labels)
-    }
-    
-    # Convert the round column to character in both dataframes
-    filtered_df$round <- as.character(filtered_df$round)
-    df_rounds$round <- as.character(df_rounds$round)
-    
-    # Join to get the month information and sample sizes
-    filtered_df <- filtered_df %>% 
-      left_join(df_rounds, by = "round")
-    
-    # Extract unique month values from df_rounds in the order they appear
-    ordered_months <- unique(df_rounds$month)
-    
-    # Convert the 'month' column in filtered_df to an ordered factor
-    filtered_df$month <- factor(filtered_df$month, levels = ordered_months, ordered = TRUE)
-    
-    # Check for 'overall' or specific rounds
-    if (as.character(params$latest_round) == "latest" && as.character(params$earliest_round) == "latest") {
-      filtered_df <- filtered_df %>% filter(round %in% round_latest)
-    } else {
-      # Replace 'latest' or 'previous' with actual values from round_latest or round_previous
-      earliest_round <- ifelse(as.character(params$earliest_round) == "previous", round_previous, as.character(params$earliest_round))
-      latest_round <- ifelse(as.character(params$latest_round) == "latest", round_latest, as.character(params$latest_round))
-      
-      # Convert to numeric for calculations
-      earliest_round_num <- as.numeric(earliest_round)
-      latest_round_num <- as.numeric(latest_round)
-      
-      # Calculate the total number of rounds between earliest and latest
-      total_rounds <- latest_round_num - earliest_round_num + 1
-      
-      # Check if rounds_skipped is NA
-      if (!is.na(params$rounds_skipped)) {
-        # Calculate how many rounds would be included with the given 'rounds_skipped'
-        rounds_included <- floor((total_rounds - 1) / (as.numeric(params$rounds_skipped) + 1)) + 1
-        
-        # If at least two rounds would be included, proceed to generate the sequence
-        if (rounds_included >= 2) {
-          rounds_to_include <- seq(from = earliest_round_num, to = latest_round_num, by = as.numeric(params$rounds_skipped) + 1)
-        } else {
-          message(paste("The number of rounds to be skipped (", params$rounds_skipped, ") would result in fewer than two rounds being included for comparison. Skipping not considered."))
-          rounds_to_include <- seq(from = earliest_round_num, to = latest_round_num)
-        }
-      } else {
-        # If rounds_skipped is NA, generate a sequence without considering it
-        rounds_to_include <- seq(from = earliest_round_num, to = latest_round_num)
-      }
-      
-      # Convert to character for filtering
-      filtered_rounds <- as.character(rounds_to_include)
-      filtered_df <- filtered_df %>% filter(round %in% filtered_rounds)
-      
-    }
-    
-    # Check if any of the custom labels are present in choice_label
-    if (any(filtered_df$choice_label %in% custom_order)) {
-      # Create a custom rank based on custom_order
-      filtered_df <- filtered_df %>% 
-        mutate(rank = match(choice_label, custom_order))
-    } else {
-      # Get the rank from the latest round data
-      latest_round_data <- filtered_df %>% filter(round == round_latest) %>% 
-        arrange(desc(result)) %>% 
-        mutate(rank = row_number())
-      
-      # Update rank in filtered_df based on latest round's result
-      filtered_df <- filtered_df %>% 
-        left_join(latest_round_data %>% select(choice_label, rank), by = "choice_label")
-    }
-    
-    # If 'top' is not NA and not an empty string, filter to keep only top X choice labels
-    if (!is.na(params$top) && params$top != "") {
-      top_n <- as.numeric(params$top)  # Convert 'top' to numeric
-      top_labels <- latest_round_data %>% 
-        head(top_n) %>% 
-        pull(choice_label)
-      
-      filtered_df <- filtered_df %>% 
-        filter(choice_label %in% top_labels)
-    }
+    filtered_df <- filter_data(data_df, params, df_rounds, round_latest, round_previous)
     
     if (nrow(filtered_df) == 0) {
-      message("filtered_df is empty or NULL")
+      message("Failure: Could not export graph as filtered_df is empty or NULL")
+      next  # Skip to the next iteration of the loop
+    }
+    
+    if (all(is.na(filtered_df$choice_label))) {
+      message("Failure: Could not export graph as choice_label column contains only NA values.")
       next
     }
     
+    # Calculate num_rounds
     num_rounds <- length(unique(filtered_df$round))
+    
+    # Calculate num_choices based on filtered_df
     num_choices <- length(unique(filtered_df$choice_label))
     
-    # Generate custom palette based on the number of rounds
-    chosen_palette <- create_custom_palette(color_start, color_end, num_rounds)
-    
-    # Create the plot
-    if (as.character(params$latest_round) != "latest" || as.character(params$earliest_round) != "latest") {
-      # Decrease dodge width for closer bars within the same group
-      dodge_width <- 0.8 
-
-      legend_labels <- paste0(unique(filtered_df$month), " (N=", scales::comma(unique(filtered_df$num_samples)), ")")
-      
-      p <- ggplot(filtered_df, aes(x = reorder(choice_label, rank), y = (result / 100), fill = round, group = round)) +
-        geom_col(position = position_dodge(width = dodge_width), width = 0.8) +
-        labs(fill = "Round") +  # Add legend title "Round"
-        scale_fill_manual(values = chosen_palette, labels = legend_labels)  # Use custom palette for grouping
-      plot_width <- 10  # Default plot width for grouped graphs
-      
-    } else {
-      
-      # Determine the number of unique bars
-      num_bars <- length(unique(filtered_df$choice_label))
-      
-      # Conditionally set bar width and plot width based on the number of bars
-      if (num_bars < 5) {
-        bar_width <- 0.5
-        plot_width <- 5
-      } else {
-        bar_width <- 0.8
-        plot_width <- 10
-      }
-      
-      p <- ggplot(filtered_df, aes(x = reorder(choice_label, rank), y = (result / 100))) +
-        geom_bar(stat = "identity", fill = color_start, width = bar_width, position = "dodge") 
-    }
-    
-    # Add subtitle only if there is one round
-    if (num_rounds == 1) {
-      single_round_month <- unique(filtered_df$month)
-      single_round_samples <- unique(filtered_df$num_samples)
-      p <- p + labs(subtitle = paste0(single_round_month, " (N=", scales::comma(single_round_samples), ")"))
-    }
-    
-    # Decision to add data labels based on "data_labels" column from params_df
-    if (is.na(params$data_labels)) {
-      add_data_labels <- NULL  # Default behavior
-    } else {
-      add_data_labels <- tolower(as.character(params$data_labels)) == 'yes'
-    }
-    
-    # Logic for adding or suppressing labels
-    if (is.null(add_data_labels)) {
-      if (num_rounds > 2 || num_choices > 8) {
-        
-        # Determine adj_val based on the number of rounds
-        adj_val <- 3 - 0.25 * (num_rounds - 2)
-        
-        # Display label only for the most recent round when there are too many rounds or choices
-        latest_round_data <- filtered_df %>% filter(round == max(round))
-        p <- p + geom_text(
-          data = latest_round_data,
-          aes(label = format_label(result, params$result_type)),
-          size = 3,
-          vjust = -1,
-          nudge_x = dodge_width / adj_val  # Adjust the label's position
-        )
-      } else {
-        # Display labels for all rounds and choices
-        p <- p + geom_text(
-          aes(label = format_label(result, params$result_type)),
-          size = 3,
-          vjust = -1,
-          position = position_dodge(.9)
-        )
-      }
-    } else if (is.logical(add_data_labels) && add_data_labels) {
-      # Always display labels when explicitly set to 'yes'
-      p <- p + geom_text(
-        aes(label = format_label(result, params$result_type)),
-        size = 3,
-        vjust = -1,
-        position = position_dodge(.9)
-      )
-    } else if (is.logical(add_data_labels) && !add_data_labels) {
-      # Suppress all labels when explicitly set to 'no'
-    }
-    
-    # Determine conditions for reducing font size
+    # Calculate max_label_length based on filtered_df
     max_label_length <- max(nchar(unique(filtered_df$choice_label)))
-    num_labels <- num_choices
     
-    # Conditionally set font size
-    font_size_value <- ifelse(max_label_length > 20 || num_labels > 15, 8, 12)
+    # Count the number of lines in the title
+    num_title_lines <- length(strwrap(params$title, width = 70))
     
-    # Determine the angle for x-axis text
-    angle_value <- ifelse(all(nchar(unique(filtered_df$choice_label)) <= 3), 0, 50)
-    
-    # Determine vertical justification based on angle
-    vjust_value <- ifelse(angle_value == 0, 0.5, 0.5)
-    
-    # Check for wrap_title being NA or 'yes'
-    if (is.na(params$wrap_title) || tolower(params$wrap_title) == 'yes') {
-      
-      # Calculate the wrap width based on the plot width
-      wrap_width <- ifelse(plot_width < 10, 40, 70)
-      wrapped_title <- strwrap(params$title, width = wrap_width)  # Dynamic wrapping width
-      
-      num_title_lines <- length(wrapped_title)  # Calculate the number of lines in the title
-      wrapped_title_text <- paste(wrapped_title, collapse = "\n")  # Concatenate lines with newline characters
-      
-      # Determine the height of the graph based on the number of title lines
-      adjusted_height <- 6 + 0.5 * (num_title_lines - 1)  # Increase the height by 0.5 unit per extra line
+    if (!is.na(params$top) && params$top != "") {
+      top_n <- as.numeric(params$top)  # Convert 'top' to numeric
     } else {
-      wrapped_title_text <- params$title  # Use the original title
-      adjusted_height <- 6  # Default height
+      top_n <- NULL
     }
     
-    # Decide the y-axis labels based on the result_type
-    y_labels <- if (params$result_type == "percent") {
-      "percent"
-    } else if (params$result_type == "integer") {
-      "integer"
+    # Assign ranks
+    filtered_df <- assign_ranks(filtered_df, custom_order, custom_order2, top_n)
+    
+    # Create the basic plot
+    if (params$result_type == "percent") {
+      p <- ggplot(filtered_df, aes(x = reorder(choice_label, rank), y = (result / 100)))
     } else {
-      "default"
+      p <- ggplot(filtered_df, aes(x = reorder(choice_label, rank), y = result))
     }
     
-    # Custom y-label formatting function
-    format_y_labels <- function(x, y_labels) {
-      if (y_labels == "percent") {
-        return(scales::percent(x))
-      } else if (y_labels == "integer") {
-        if (all(floor(x) == x)) {
-          return(scales::comma(x * 100))
-        } else {
-          return(scales::comma(x))
-        }
-      } else {
-        return(x)
-      }
-    }
-    
-    # Assign the wrapped title to the ggplot object
-    p <- p + labs(
-      title = wrapped_title_text,  # Use the wrapped title
-      x = NULL,
-      y = NULL
-     ) + 
-      scale_x_discrete(labels = label_wrap(width = 30)) +
-      scale_y_continuous(labels = function(x) format_y_labels(x, y_labels), expand = expand_scale(mult = c(0, 0.1))) +
-      theme(
-        axis.text.x = element_text(
-          angle = angle_value,  # Conditionally set angle
-          hjust = 0.5,  # center-align
-          vjust = vjust_value,  # Vertically adjust labels
-          size = font_size_value,  # Conditionally set font size
-          margin = margin(t = 10, r = 10, b = 10, l = 10),  # Add space around labels
-          family = "Leelawadee"  # Set font family
-        ),
-        plot.margin = margin(1, 1, 1.5, 1, "cm"),  # Increase bottom margin of the plot
-        plot.title = element_text(vjust = 2, family = "Leelawadee"),  # Set font family for title
-        axis.text.y = element_text(family = "Leelawadee")  # Set font family for y-axis text
-      )
-    
-    # Determine the subfolder based on the "disp_status" column
-    subfolder <- ifelse(params$disp_status == "refugee", "refugees", ifelse(params$disp_status == "returnee",  "returnees", "overall"))
-    
-    # Generate sanitized, lowercase file name from title
-    file_extension <- ifelse(params$export == "pdf", ".pdf", ".png")
-    output_file_name <- paste0(sanitize_title(params$title), file_extension)
-    
-    # Create the subfolder if it doesn't exist
-    subfolder_path <- file.path(output_folder, subfolder)
-    if (!dir.exists(subfolder_path)) {
-      dir.create(subfolder_path)
-    }
-    
-    # Generate the full output file path including subfolder
-    output_file_path <- file.path(subfolder_path, output_file_name)
-    ggplot2::ggsave(output_file_path, plot = p, width = plot_width, height = adjusted_height)
-    
-    if (file.exists(output_file_path)) {
-      message(paste("Successfully created graph:", output_file_path))
+    # Conditionally set fill based on latest_round and earliest_round
+    if (as.character(params$latest_round) == "latest" && as.character(params$earliest_round) == "latest") {
+      p <- p + geom_bar(stat = "identity", fill = color_start, width = 0.8, position = "dodge")
     } else {
-      message(paste("Failure: Could not export graph as", output_file_path))
+      p <- p + geom_bar(stat = "identity", aes(fill = round), width = 0.8, position = "dodge")
+    }
+    
+    # Customize the plot
+    customization_result <- customize_plot(p, filtered_df, params, num_choices, num_title_lines, num_rounds, color_start, color_end, font_family, base_size)
+    p <- customization_result$customized_plot
+    plot_width <- customization_result$plot_width
+    adjusted_height <- customization_result$adjusted_height
+    
+    # Handle file operations
+    if (!handle_file_ops(p, params, output_folder, plot_width, adjusted_height)) {
+      message("File operation failed.")
     }
   }
 }
-
-
