@@ -189,14 +189,6 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
     adjusted_height <- 6  # Default height
   }
   
-  # Determine the font family based on the export format
-  if (is.na(params$export) || params$export == "png") {
-    # Use the font_family passed as an argument to the function
-  } else {
-    print("Switching to Helvetica for PDF export.")
-    font_family <- "Helvetica"
-  }
-  
   p <- p + theme(
     axis.text.x = element_text(
       angle = angle_value,  # Conditionally set angle
@@ -284,8 +276,8 @@ handle_file_ops <- function(p, params, output_folder, plot_width, adjusted_heigh
   subfolder <- ifelse(params$disp_status == "refugee", "refugees", 
                       ifelse(params$disp_status == "returnee", "returnees", "overall"))
   
-  # Determine file extension based on the 'export' parameter, default to '.png' if NA
-  file_extension <- ifelse(is.na(params$export), ".png", ifelse(params$export == "pdf", ".pdf", ".png"))
+  # Default file extension
+  file_extension <- ".png"
   
   # Generate sanitized, lowercase file name from title
   sanitized_title <- sanitize_title(params$title)
@@ -309,12 +301,8 @@ handle_file_ops <- function(p, params, output_folder, plot_width, adjusted_heigh
   # Generate the full output file path including subfolder
   output_file_path <- file.path(subfolder_path, output_file_name)
   
-  # Save the plot based on the 'export' parameter
-  if (file_extension == ".pdf") {
-    ggplot2::ggsave(output_file_path, plot = p, device = "pdf", width = plot_width, height = adjusted_height)
-  } else {
-    ggplot2::ggsave(output_file_path, plot = p, device = "png", width = plot_width, height = adjusted_height)
-  }
+  # Save the plot in PNG format
+  ggplot2::ggsave(output_file_path, plot = p, device = "png", width = plot_width, height = adjusted_height)
   
   if (file.exists(output_file_path)) {
     message(paste("Successfully created graph:", output_file_path))
