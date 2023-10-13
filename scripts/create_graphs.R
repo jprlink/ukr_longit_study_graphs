@@ -8,6 +8,9 @@ library(lubridate)
 library(ggthemes)
 library(extrafont)
 loadfonts(quiet = T)
+# font_import(prompt = FALSE)
+# loadfonts(device = "pdf")
+# extrafont::fonttable()
 
 source("scripts/functions.R")
 
@@ -43,6 +46,9 @@ head(df_params)
 color_start <- "#44546A"
 color_end <- "#93B8D2"
 
+# define font family
+font_family <- "Leelawadee"
+
 ######## run the rest from here
 round_previous <- round_latest - 1
 round_latest <- as.character(round_latest)
@@ -60,11 +66,7 @@ df_long <- df_long %>%
 df_long %>% select(-all_of(dis_vars_names)) %>% 
   write_xlsx(sprintf("output/ukr_longit_analysis_table_round_%s_%s_overall.xlsx", round_latest, Sys.Date()))
 
-sum(is.na(df_long$choice_label))
-
 # create bar graphs
-create_bar_graph_vertical(df_long, df_params, round_latest, dir_output_graphs, color_start, color_end)
-
-
+create_bar_graph_vertical(df_long, df_params, round_latest, dir_output_graphs, color_start, color_end, font_family)
 
 
