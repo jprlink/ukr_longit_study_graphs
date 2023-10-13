@@ -60,8 +60,11 @@ df_long <- df_long %>%
 df_long %>% select(-all_of(dis_vars_names)) %>% 
   write_xlsx(sprintf("output/ukr_longit_analysis_table_round_%s_%s_overall.xlsx", round_latest, Sys.Date()))
 
+sum(is.na(df_long$choice_label))
+
 # create bar graphs
 create_bar_graph_vertical(df_long, df_params, round_latest, dir_output_graphs, color_start, color_end)
+
 
 
 
