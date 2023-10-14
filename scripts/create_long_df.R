@@ -1,18 +1,11 @@
 
-############ source this as part of script "create_graphs" ############
+############ source this as part of script "run_all" ############
 
 ###### Load data
-
-# load excel sheets to relabel response options and sheets
-df_relabel_choices <- read_xlsx("input/renaming_labels.xlsx", guess_max = 100000)
-df_relabel_vars <- read_xlsx("input/renaming_labels.xlsx", 2, guess_max = 100000)
 
 # Load Excel data into list of data frames
 df_list_ref <- load_excel_sheets("input/analysis_refugees.xlsx")
 df_list_ret <- load_excel_sheets("input/analysis_returnees.xlsx")
-
-# Base columns to keep
-col_keep_base <- c("sheet", "strata", "num_samples")
 
 # Process the data
 df_long_ref <- process_data(df_list_ref, col_keep_base, dis_vars_ref, "refugee")
@@ -30,8 +23,7 @@ df_long <- rbind(df_long_ref,
                  df_long_ret,
                  df_long_comb)
 
-
-###### finalize dataset
+###### finalize dataframe
 
 # replace rows with NAs for disagg vars
 df_long <- df_long %>% filter(!strata %in% c("overall"),
@@ -75,7 +67,15 @@ df_long[vars_num] <- lapply(df_long[vars_num], as.numeric)
 df_long <- df_long %>% 
   select(question_choice_id, question_code, choice_label, round,  disp_status, all_of(dis_vars), num_samples, result)
 
-# export results
+# export all disaggregated results
 df_long %>% write_xlsx(sprintf("output/ukr_longit_analysis_table_round_%s_%s.xlsx", round_latest, Sys.Date()))
 df_long %>% saveRDS(sprintf("output/ukr_longit_analysis_table_round_%s.RDS", round_latest))
 
+# filter for overall results (no disaggregations)
+dis_vars_names <- df_long %>% select(all_of(dis_vars)) %>% names()
+df_long <- df_long %>%
+  filter(rowSums(sapply(.[, dis_vars_names, drop = FALSE], function(col) col == "overall")) == length(dis_vars_names))
+
+# export filtered overall results (used for graphs)
+df_long %>% select(-all_of(dis_vars_names)) %>% 
+  write_xlsx(sprintf("output/ukr_longit_analysis_table_round_%s_%s_overall.xlsx", round_latest, Sys.Date()))
