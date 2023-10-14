@@ -21,8 +21,8 @@ dir_output_graphs <- paste0("output/graphs", "/r",round_latest)
 
 # source("scripts/create_long_df.R")
 df_long <- readRDS(sprintf("output/ukr_longit_analysis_table_round_%s.RDS", round_latest))
-df_params <- read_excel("input/list_graphs_fs.xlsx")
-df_rounds <- read_excel("input/list_graphs_fs.xlsx", 2)
+df_params <- read_excel("input/list_graphs.xlsx", 2)
+df_rounds <- read_excel("input/list_graphs.xlsx", 3)
 
 head(df_long)
 head(df_params)
