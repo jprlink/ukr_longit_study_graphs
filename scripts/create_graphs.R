@@ -12,7 +12,12 @@ library(lubridate)
 library(ggthemes)
 source("scripts/functions.R")
 
-######################### Provide parameters
+# IMPORTANT before running the script: 
+# (1) Replace the analysis tables and the DAFs for refugees, returnees and combined 
+# in the input folder with those you need for graphs.
+# (2) Make sure the parameters in section (1) below are specified correctly.
+
+######################### (1) Provide parameters
 
 # Specify latest DC round to be used for graphs
 round_latest <- 16
@@ -28,7 +33,7 @@ font_family <- "Leelawadee"
 base_size <- 12
 theme_set(theme_longit_bars_vert(base_size = base_size))
 
-######################### Load remaining parameters
+######################### (2) Load remaining parameters
 
 # Output directory for graphs
 dir_output_graphs <- paste0("output/graphs", "/r",round_latest)
