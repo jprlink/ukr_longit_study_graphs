@@ -7,7 +7,7 @@ output:
 
 ## Overview
 
-The `ukr_longit_study_graphs` R project is designed to generate bar graphs for factsheets, briefs, presentations and other outputs of IMPACT's longitudinal survey with Ukrainian refugees and returnees. It uses as input the analysis outputs generated from the DAF. 
+The `ukr_longit_study_graphs` R project is designed to generate horizontal and vertical bar graphs for factsheets, briefs, presentations and other outputs of IMPACT's longitudinal survey with Ukrainian refugees and returnees. It uses as input the analysis outputs generated from the DAF. 
 
 The project consists of the main R script `create_graphs.R` and the sourced R script `functions.R`. The scripts work with any data collection round and a minimum of two rounds of results contained in the analysis tables. 
 
@@ -79,7 +79,7 @@ Before running `create_graphs.R`, make sure to:
 
 ### `functions.R`
 
-The `functions.R` script provides utility functions for graph creation and data validation. The main function in this script is `create_bar_graph_vertical`, which is invoked by `create_graphs.R`. `create_bar_graph_vertical` is a wrapper function for several helper functions specific to each step of the graph creation:
+The `functions.R` script provides utility functions for graph creation and data validation. The main function in this script is `create_bar_graph`, which is invoked by `create_graphs.R`. `create_bar_graph` is a wrapper function for several helper functions specific to each step of the graph creation:
 
 1. **Data Validation (`validate_data`)**: The function begins by validating the input dataset and parameters. If the validation fails, the script will stop execution.
     - Input: `data_df`, `params_df`
@@ -88,13 +88,13 @@ The `functions.R` script provides utility functions for graph creation and data 
     - Input: `data_df`, `params`, `round_latest`, `round_previous`
   
 3. **Rank Assignment (`assign_ranks`)**: Assigns ranks to the choices based on custom orderings. This rank is used for the proper placement of bars in the graphs.
-    - Input: `filtered_df`, `custom_order`, `custom_order2`, `top_n`
+    - Input: `filtered_df`, `custom_order`, `custom_order2`, `top_n`, `graph_type`
   
 4. **Graph Plotting with ggplot**: Creates a ggplot object (`p`) and populates it with data. It also decides whether to display results as percentages or raw numbers.
     - Conditionally sets the fill color based on `latest_round` and `earliest_round`.
   
 5. **Graph Customization (`customize_plot`)**: Further customizes the ggplot object based on several variables like number of choices, number of title lines, and number of rounds. It also decides on the plot width and adjusted height.
-    - Input: `p`, `filtered_df`, `params`, `num_choices`, `num_title_lines`, `num_rounds`, `color_start`, `color_end`, `font_family`, `base_size`
+    - Input: `p`, `filtered_df`, `params`, `num_choices`, `num_title_lines`, `num_rounds`, `color_start`, `color_end`, `font_family`, `base_size`, `graph_type`
   
 6. **File Operations (`handle_file_ops`)**: Saves the finalized plots in the specified output folder.
     - Input: `p`, `params`, `output_folder`, `plot_width`, `adjusted_height`

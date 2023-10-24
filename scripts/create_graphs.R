@@ -146,8 +146,5 @@ df_long %>% select(-all_of(dis_vars_names)) %>%
 
 ######################### (4) Create graphs
 
-# df_long <- readRDS(sprintf("output/ukr_longit_analysis_table_round_%s.RDS", round_latest))
-
-create_bar_graph_vertical(df_long, df_params, round_latest, dir_output_graphs, color_start, color_end, font_family)
-
+create_bar_graph(df_long, df_params, round_latest, dir_output_graphs, color_start, color_end, font_family)
 
