@@ -31,7 +31,7 @@ font_family <- "Leelawadee"
 
 # Set base font size and theme
 base_size <- 12
-theme_set(theme_longit_bars_vert(base_size = base_size))
+theme_set(theme_longit_bars(base_size = base_size))
 
 ######################### (2) Load remaining parameters
 
@@ -141,10 +141,17 @@ df_long <- df_long %>%
   filter(rowSums(sapply(.[, dis_vars_names, drop = FALSE], function(col) col == "overall")) == length(dis_vars_names))
 
 # export filtered overall results (used for graphs)
-df_long %>% select(-all_of(dis_vars_names)) %>% 
+df_long <- df_long %>% select(-all_of(dis_vars_names)) 
+
+df_long %>% 
   write_xlsx(sprintf("output/ukr_longit_analysis_table_round_%s_%s_overall.xlsx", round_latest, Sys.Date()))
 
+df_long %>% 
+  saveRDS(sprintf("output/ukr_longit_analysis_table_round_%s_overall.RDS", round_latest))
+
 ######################### (4) Create graphs
+
+df_long <- readRDS(sprintf("output/ukr_longit_analysis_table_round_%s_overall.RDS", round_latest))
 
 create_bar_graph(df_long, df_params, round_latest, dir_output_graphs, color_start, color_end, font_family)
 
