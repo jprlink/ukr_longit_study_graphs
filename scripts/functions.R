@@ -163,7 +163,7 @@ validate_data <- function(data_df, params_df) {
   required_cols_data <- c("question_code", "choice_label", "result", "round", "num_samples", "disp_status")
   required_cols_params <- c("title", "graph_type", "result_type", "disp_status", "main_variable", "top", 
                             "data_labels", "exclude_pns", "exclude_dk", "exclude_other", "wrap_title", "label_orientation", 
-                            "plot_width", "plot_height", "legend_position", "data_label_size") 
+                            "plot_width", "plot_height", "legend_position", "data_label_size", "file_format") 
   
   missing_data_cols <- setdiff(required_cols_data, names(data_df))
   missing_params_cols <- setdiff(required_cols_params, names(params_df))
@@ -840,9 +840,6 @@ handle_file_ops <- function(p, params, output_folder, plot_width, adjusted_heigh
   subfolder <- ifelse(params$disp_status == "refugee", "refugees", 
                       ifelse(params$disp_status == "returnee", "returnees", "overall"))
   
-  # Default file extension
-  file_extension <- ".png"
-  
   # Generate sanitized, lowercase file name from title
   sanitized_title <- sanitize_title(params$title)
   
@@ -853,27 +850,34 @@ handle_file_ops <- function(p, params, output_folder, plot_width, adjusted_heigh
     message("Sanitized title truncated due to excessive length.")
   }
   
-  # Combine sanitized title with file extension
-  output_file_name <- paste0(sanitized_title, file_extension)
-  
-  # Create the subfolder if it doesn't exist
-  subfolder_path <- file.path(output_folder, subfolder)
-  if (!dir.exists(subfolder_path)) {
-    dir.create(subfolder_path)
+  # Loop through each file extension
+  for(file_extension in c(".svg", ".png")) {
+    # Determine the device based on the file extension
+    device_function <- ifelse(file_extension == ".svg", "svg", "png")
+    
+    # Combine sanitized title with file extension
+    output_file_name <- paste0(sanitized_title, file_extension)
+    
+    # Create the subfolder if it doesn't exist
+    subfolder_path <- file.path(output_folder, subfolder, device_function)
+    if (!dir.exists(subfolder_path)) {
+      dir.create(subfolder_path, recursive = TRUE)
+    }
+    
+    # Generate the full output file path including subfolder
+    output_file_path <- file.path(subfolder_path, output_file_name)
+    
+    # Save the plot in the current format
+    ggplot2::ggsave(output_file_path, plot = p, device = device_function, width = plot_width, height = adjusted_height)
+    
+    if (file.exists(output_file_path)) {
+      message(paste("Successfully created graph:", output_file_path))
+    } else {
+      message(paste("Failure: Could not export graph as", output_file_path))
+    }
   }
   
-  # Generate the full output file path including subfolder
-  output_file_path <- file.path(subfolder_path, output_file_name)
-  
-  # Save the plot in PNG format
-  ggplot2::ggsave(output_file_path, plot = p, device = "png", width = plot_width, height = adjusted_height)
-  
-  if (file.exists(output_file_path)) {
-    message(paste("Successfully created graph:", output_file_path))
-    return(TRUE)
-  } else {
-    message(paste("Failure: Could not export graph as", output_file_path))
-    return(FALSE)
-  }
+  return(TRUE)
 }
+
 

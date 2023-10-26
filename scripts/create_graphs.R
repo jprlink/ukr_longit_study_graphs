@@ -10,6 +10,7 @@ library(stringi)
 library(stringr)
 library(lubridate)
 library(ggthemes)
+library(svglite)
 source("scripts/functions.R")
 
 # IMPORTANT before running the script: 

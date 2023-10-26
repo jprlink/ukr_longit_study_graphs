@@ -7,7 +7,7 @@ output:
 
 ## Overview
 
-The `ukr_longit_study_graphs` R project is designed to generate horizontal and vertical bar graphs for factsheets, briefs, presentations and other outputs of IMPACT's longitudinal survey with Ukrainian refugees and returnees. It uses as input the analysis outputs generated from the DAF. 
+The `ukr_longit_study_graphs` R project is designed to generate png and svg versions of horizontal and vertical bar graphs for factsheets, briefs, presentations and other outputs of IMPACT's longitudinal survey with Ukrainian refugees and returnees. It uses as input the analysis outputs generated from the DAF. 
 
 The project consists of the main R script `create_graphs.R` and the sourced R script `functions.R`. The scripts work with any data collection round and a minimum of two rounds of results contained in the analysis tables. 
 
@@ -67,7 +67,7 @@ The project consists of the main R script `create_graphs.R` and the sourced R sc
   
 4. Transforms the separate analysis tables (DAF analysis outputs) for refugees, returnees and overall population in wide and tab format into a single long consolidated table.
   
-5. Utilizes the processed data to generate the final graphs.
+5. Utilizes the processed data to generate the final graphs in both svg and png formats.
 
 #### Usage
 
