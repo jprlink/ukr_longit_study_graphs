@@ -98,7 +98,7 @@ add_empty_vars <- function(df, variables_to_add) {
 }
 
 # Create theme
-theme_longit_bars <- function (base_size, base_family = "Leelawadee", ticks = TRUE) 
+theme_longit_bars <- function (base_size, base_family = "Leelawadee", ticks = F) 
 {
   ret <- theme_bw(base_family = base_family, base_size = base_size) + 
     theme(
@@ -111,8 +111,8 @@ theme_longit_bars <- function (base_size, base_family = "Leelawadee", ticks = TR
       axis.line = element_blank(),
       axis.line.x = element_line(color = "black", size = 0.5),  # Line for the X-axis
       axis.line.y = element_line(color = "black", size = 0.5),  # Line for the Y-axis
-      axis.ticks.x = element_line(color = "black", size = 0.5),  # Ticks for the X-axis
-      axis.ticks.y = element_line(color = "black", size = 0.5),  # Ticks for the Y-axis
+      axis.ticks.x = element_blank(),  # Ticks for the X-axis
+      axis.ticks.y = element_blank(),  # Ticks for the Y-axis
       panel.grid = element_blank()
     )
   if (!ticks) {
@@ -163,7 +163,7 @@ validate_data <- function(data_df, params_df) {
   required_cols_data <- c("question_code", "choice_label", "result", "round", "num_samples", "disp_status")
   required_cols_params <- c("title", "graph_type", "result_type", "disp_status", "main_variable", "top", 
                             "data_labels", "exclude_pns", "exclude_dk", "exclude_other", "wrap_title", "label_orientation", 
-                            "plot_width", "plot_height", "legend_position", "data_label_size", "file_format") 
+                            "plot_width", "plot_height", "legend_position", "data_label_size") 
   
   missing_data_cols <- setdiff(required_cols_data, names(data_df))
   missing_params_cols <- setdiff(required_cols_params, names(params_df))
@@ -326,9 +326,8 @@ format_y_labels <- function(x, y_labels) {
 
 # Customize plot function
 customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines, num_rounds, color_start, color_end, font_family, base_size, graph_type) {
-    
   # Determine dodge_width based on conditions
-  if (as.character(params$latest_round) != "latest" || as.character(params$earliest_round) != "latest") {
+  if(num_rounds > 1) {
     dodge_width <- 0.8
   } else {
     dodge_width <- 0.9  # You can set this to a default value or another conditional value
@@ -350,7 +349,7 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
     }
   } else if (graph_type == "bar_horizontal") {
     
-    plot_width <- 7.5
+    plot_width <- 8
     
     # Determine the number of unique bars (num_choices)
       if (num_choices < 5) {
@@ -378,7 +377,7 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
   # Conditionally set font size
   font_size_value <- ifelse(max_label_length > 20 || 
                               num_choices > 8 || 
-                              num_rounds > 8, 9, base_size)
+                              num_rounds > 8, 11, base_size)
   
   # Ensure the font size for x-axis labels is not larger than y-axis labels
   font_size_value <- min(font_size_value, y_axis_font_size)  # Take the minimum of calculated and y-axis font size
@@ -457,15 +456,16 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
       vjust = vjust_value,  # Vertically adjust labels
       size = font_size_value,  # Conditionally set font size
       margin = margin(t = 10, r = 10, b = 10, l = 10),  # Add space around labels
-      family = font_family  # Set font family
+      family = font_family,  # Set font family
+      face = "bold"
     ),
     plot.margin = margin(1, 1, 1.5, 1, "cm"),  # Increase bottom margin of the plot
     plot.title = element_text(vjust = 2, size = font_size_value + 4, family = font_family, face = "bold"),  # Set font family and make it bold,
     axis.text.y = element_text(size = font_size_value, family = font_family), # Set font family for y-axis text
     axis.title.x=element_blank(), 
     axis.title.y=element_blank(),
-    legend.title=element_text(size=font_size_value, face = "bold"), 
-    legend.text=element_text(size=font_size_value)
+    legend.title=element_text(size=font_size_value, family = font_family, face = "bold"), 
+    legend.text=element_text(size=font_size_value, family = font_family)
   )
   } else if(graph_type == "bar_horizontal") {
     p <- p + theme(
@@ -473,14 +473,15 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
       plot.title = element_text(vjust = 2, size = font_size_value + 4, family = font_family, face = "bold"),  # Set font family and make it bold
       axis.text.y = element_text(size = font_size_value,  # Conditionally set font size
                                  margin = margin(t = 10, r = 10, b = 10, l = 10),  # Add space around labels
-                                 family = font_family), # Set font family for y-axis text
+                                 family = font_family,
+                                 face = "bold"), # Set font family for y-axis text
       axis.title.x=element_blank(), 
       axis.title.y=element_blank(),
       axis.text.x = element_blank(),
       axis.ticks.x = element_blank(),
       axis.line.x = element_blank(),
-      legend.title=element_text(size=font_size_value, face = "bold"), 
-      legend.text=element_text(size=font_size_value)
+      legend.title=element_text(size=font_size_value, family = font_family, face = "bold"), 
+      legend.text=element_text(size=font_size_value, family = font_family)
     )
   }
   
@@ -491,20 +492,21 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
   p <- p + theme(
   legend.position='top', 
   legend.justification='left',
-  legend.direction='horizontal')
+  legend.direction='horizontal',
+  legend.margin=margin(0, 0, 0, 0))
   
   } else  if (params$legend_position == 'right') {
     
     p <- p + theme(
       legend.position='right')
   }
-
+  
   # Add subtitle only if there is one round
   if (num_rounds == 1) {
     single_round_month <- unique(filtered_df$month)
     single_round_samples <- unique(filtered_df$num_samples)
     p <- p + labs(subtitle = paste0(single_round_month, " (N=", scales::comma(single_round_samples), ")")) +
-        theme(plot.subtitle = element_text(size = font_size_value)
+        theme(plot.subtitle = element_text(size = font_size_value, family = font_family)
       )
   }
   
@@ -543,7 +545,7 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
       # Ungrouped graph, center the label
       p <- p + geom_text(
         data = latest_round_data,
-        aes(label = format_label(result, params$result_type), group = round),
+        aes(label = format_label(result, params$result_type), group = round, fontface = "bold"),
         size = label_size,
         vjust = -1,
         hjust = 0.5  # Center the label
@@ -568,7 +570,7 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
       
       p <- p + geom_text(
         data = latest_round_data,
-        aes(label = format_label(result, params$result_type), group = round),
+        aes(label = format_label(result, params$result_type), group = round, fontface = "bold"),
         size = label_size,
         vjust = -1,
         nudge_x = dodge_width / adj_val  # Adjust the label's position
@@ -596,7 +598,7 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
       
       # Show labels for all rounds
       p <- p + geom_text(
-        aes(label = format_label(result, params$result_type), group = round),
+        aes(label = format_label(result, params$result_type), group = round, fontface = "bold"),
         size = label_size,
         vjust = -1,
         position = position_dodge(dodge_width)  # This line ensures the labels are dodged like the bars
@@ -643,18 +645,16 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
         
         # Determine label size based on the number of rounds and choice labels
         if (num_choices <= 3) {
-          label_size <- 3.5
+          label_size <- 4.1
         } else if (num_choices <= 6) {
-          label_size <- 3.2
-        } else if (num_choices <= 10) {
-          label_size <- 3.2
+          label_size <- 4
         } else {
-          label_size <- 2.5
+          label_size <- 3.8
         }
         
         p <- p + geom_text(
           data = latest_round_data,
-          aes(label = format_label(result, params$result_type), group = round),
+          aes(label = format_label(result, params$result_type), group = round, fontface = "bold"),
           size = label_size,
           hjust = -0.3,
           vjust = 0.5  # Center the label
@@ -664,18 +664,18 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
         # Determine adj_val based on the number of rounds and choice labels
         if (num_choices <= 3) {
           adj_val <- 4 + 0.5 * (3 - num_choices)
-          label_size <- 3.2
+          label_size <- 4.1
         } else if (num_choices <= 6) {
           adj_val <- 4 + 0.35 * (6 - num_choices)  # Increased base value for 4-6 groups
-          label_size <- 3
+          label_size <- 4
         } else {
           adj_val <- 3 - 0.25 * (num_rounds - 2)
-          label_size <- 2.8
+          label_size <- 3.8
         }
         
         p <- p + geom_text(
           data = latest_round_data,
-          aes(label = format_label(result, params$result_type), group = round),
+          aes(label = format_label(result, params$result_type), group = round, fontface = "bold"),
           size = label_size,
           hjust = -0.3,
           nudge_y = dodge_width / adj_val  # Adjust the label's position
@@ -688,18 +688,16 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
         
         # Determine label size based on the number of rounds and choice labels
         if (num_choices <= 3) {
-          label_size <- 3.5
+          label_size <- 4.1
         } else if (num_choices <= 6) {
-          label_size <- 3.2
-        } else if (num_choices <= 10) {
-          label_size <- 3.2
+          label_size <- 4
         } else {
-          label_size <- 2.7
+          label_size <- 3.8
         }
         
         # Show labels for all rounds
         p <- p + geom_text(
-          aes(label = format_label(result, params$result_type), group = round),
+          aes(label = format_label(result, params$result_type), group = round, fontface = "bold"),
           size = label_size,
           hjust = -0.3,
           position = position_dodge(dodge_width),  # This line ensures the labels are dodged like the bars
@@ -721,7 +719,31 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
     y_labels <- params$result_type  # Assume params has a result_type that can be 'percent', 'integer', etc.
     
     p <- p + scale_x_continuous(labels = function(x) format_y_labels(x, y_labels),
-                                expand = expansion(mult = c(0, 0.1)))
+                                expand = expansion(mult = c(0, 0.1))
+                                )
+    
+    # Determine the maximum result value for the choice labels
+    max_result_value <- max(filtered_df$result)
+
+    # Conditionally set the xlim
+    if (max_result_value > 1000) {
+      new_xlim_upper <- 1200
+    } else if (max_result_value > 100) {
+      new_xlim_upper <- 1000
+    } else if (max_result_value > 80) {
+      new_xlim_upper <- 1.3
+    } else if (max_result_value > 60) {
+      new_xlim_upper <- 0.8 
+    } else if (max_result_value > 40) {
+      new_xlim_upper <- 0.5 
+    } else if (max_result_value > 20) {
+      new_xlim_upper <- 0.4 
+    } else {
+      new_xlim_upper <- 0.2
+    }
+    
+    # Apply the coord_cartesian to set the xlim
+    p <- p + coord_cartesian(xlim = c(NA, new_xlim_upper))
 
     # Add custom y-axis labels
     if (angle_value == 0) {
@@ -731,6 +753,8 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
     }
   }
 
+  p <- p + guides(fill = guide_legend(keyheight = unit(0.4, "cm"), keywidth = unit(0.4, "cm")))
+  
   return(list(customized_plot = p, plot_width = plot_width, adjusted_height = adjusted_height))
 }
 
@@ -798,7 +822,7 @@ create_bar_graph <- function(data_df, params_df, round_latest, output_folder, co
         p <- ggplot(filtered_df, aes(x = reorder(choice_label, rank), y = result))
       }
       
-      if (as.character(params$latest_round) == "latest" && as.character(params$earliest_round) == "latest") {    
+      if(num_rounds == 1) {   
         p <- p + geom_bar(stat = "identity", fill = color_start, width = 0.8, position = "dodge")
       } else {
         p <- p + geom_bar(stat = "identity", aes(fill = round), width = 0.8, position = "dodge")
@@ -812,7 +836,7 @@ create_bar_graph <- function(data_df, params_df, round_latest, output_folder, co
         p <- ggplot(filtered_df, aes(x = result, y = reorder(choice_label, desc(rank))))
       }
       
-      if (as.character(params$latest_round) == "latest" && as.character(params$earliest_round) == "latest") {   
+      if(num_rounds == 1) {
         p <- p + geom_bar(stat = "identity", fill = color_start, width = 0.6, position = "dodge")
 
       } else {
