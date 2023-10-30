@@ -40,7 +40,7 @@ theme_set(theme_longit_bars(base_size = base_size))
 dir_output_graphs <- paste0("output/graphs", "/r",round_latest)
 
 # Remaining parameters
-df_params <- read_excel("input/list_graphs.xlsx", 2)
+df_params <- read_excel("input/list_graphs.xlsx", 2) %>% filter(!omit_graph %in% "yes")
 df_rounds <- read_excel("input/list_graphs.xlsx", 3)
 
 # Define rounds
@@ -72,11 +72,12 @@ col_keep_base <- c("sheet", "strata", "num_samples")
 # Load Excel data into list of data frames
 df_list_ref <- load_excel_sheets("input/analysis_refugees.xlsx")
 df_list_ret <- load_excel_sheets("input/analysis_returnees.xlsx")
+df_list_comb <- load_excel_sheets("input/analysis_combined.xlsx")
 
 # Process the data
 df_long_ref <- process_data(df_list_ref, col_keep_base, dis_vars_ref, "refugee")
 df_long_ret <- process_data(df_list_ret, col_keep_base, dis_vars_ret, "returnee")
-df_long_comb <- process_data(df_list_ret, col_keep_base, dis_vars_ret, "overall")
+df_long_comb <- process_data(df_list_comb, col_keep_base, dis_vars_comb, "overall")
 
 # Combine both datasets
 all_cols <- unique(c(colnames(df_long_ref), colnames(df_long_ret), colnames(df_long_comb)))

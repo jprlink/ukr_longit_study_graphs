@@ -163,7 +163,7 @@ validate_data <- function(data_df, params_df) {
   required_cols_data <- c("question_code", "choice_label", "result", "round", "num_samples", "disp_status")
   required_cols_params <- c("title", "graph_type", "result_type", "disp_status", "main_variable", "top", 
                             "data_labels", "exclude_pns", "exclude_dk", "exclude_other", "wrap_title", "label_orientation", 
-                            "plot_width", "plot_height", "legend_position", "data_label_size") 
+                            "plot_width", "plot_height", "legend_position", "data_label_size", "aggregate_other") 
   
   missing_data_cols <- setdiff(required_cols_data, names(data_df))
   missing_params_cols <- setdiff(required_cols_params, names(params_df))
@@ -263,7 +263,7 @@ filter_data <- function(data_df, params, df_rounds, round_latest, round_previous
 }
 
 # Rank assignment function
-assign_ranks <- function(filtered_df, custom_order, custom_order2, top_n = NULL, graph_type = "bar_vertical") {
+assign_ranks <- function(filtered_df, custom_order, custom_order2, top_n = NULL, graph_type = "bar_vertical", params) {
   
   # Check if any of the custom labels from custom_order are present in choice_label
   if (any(filtered_df$choice_label %in% custom_order)) {
@@ -302,6 +302,38 @@ assign_ranks <- function(filtered_df, custom_order, custom_order2, top_n = NULL,
     
     filtered_df <- filtered_df %>% 
       filter(choice_label %in% top_labels)
+    
+    
+    if (!is.na(params$aggregate_other) && params$aggregate_other == "yes" && 
+        !is.na(params$result_type) && params$result_type == "percent") {
+      
+      # Initialize an empty data frame to store 'Other' rows
+      other_rows <- data.frame()
+      
+      # Loop through each unique round
+      for (r in unique(filtered_df$round)) {
+        
+        # Calculate the sum of 'result' for the current round
+        sum_top_results <- sum(filtered_df$result[filtered_df$round == r], na.rm = TRUE)
+        other_value = 100 - sum_top_results
+        
+        # Extract a row from filtered_df for the same round, to clone its structure
+        template_row <- filtered_df[filtered_df$round == r, , drop = FALSE][1, , drop = FALSE]
+        
+        # Modify the template to create the 'Other' row
+        template_row$choice_label <- "Other"
+        template_row$result <- other_value
+        template_row$rank <- max(filtered_df$rank[filtered_df$round == r], na.rm = TRUE) + 1
+        
+        # Append the 'Other' row to the other_rows data frame
+        other_rows <- rbind(other_rows, template_row)
+      }
+      
+      # Add the 'Other' rows to the original data frame
+      filtered_df <- rbind(filtered_df, other_rows)
+    }
+    
+    
   }
   
   return(filtered_df)
@@ -409,6 +441,13 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
     })
   }
   
+  # Function to wrap labels at 30 characters
+  label_wrap_30 <- function(x) {
+    sapply(x, function(single_x) {
+      stringr::str_wrap(single_x, 30)
+    })
+  }
+  
   # Determine vertical justification based on angle
   vjust_value <- ifelse(angle_value == 0, 0.5, 0.5)
   
@@ -416,7 +455,7 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
   
   if (graph_type == "bar_vertical") {
     
-  chosen_palette <- create_custom_palette(color_start, color_end, num_rounds)
+  chosen_palette <- create_custom_palette(color_end, color_start, num_rounds)
   
   } else if (graph_type == "bar_horizontal") {
     
@@ -461,28 +500,46 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
     ),
     plot.margin = margin(1, 1, 1.5, 1, "cm"),  # Increase bottom margin of the plot
     plot.title = element_text(vjust = 2, size = font_size_value + 4, family = font_family, face = "bold"),  # Set font family and make it bold,
-    axis.text.y = element_text(size = font_size_value, family = font_family), # Set font family for y-axis text
     axis.title.x=element_blank(), 
     axis.title.y=element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.line.y = element_blank(),
     legend.title=element_text(size=font_size_value, family = font_family, face = "bold"), 
     legend.text=element_text(size=font_size_value, family = font_family)
   )
   } else if(graph_type == "bar_horizontal") {
+    # Calculate maximum length of y-axis labels
+    max_y_label_length <- max(nchar(unique(filtered_df$choice_label)))
+    
+    # Count the number of unique y-axis labels
+    num_y_labels <- length(unique(filtered_df$choice_label))
+    
+    # Conditionally set left margin based on y-axis labels
+    if (num_y_labels > 10 && max_y_label_length > 30) {
+      left_margin <- 2  # Increase margin
+      p <- p + scale_y_discrete(labels = label_wrap(width = 30))
+    } else {
+      left_margin <- 1.2  # Default value
+      p <- p + scale_y_discrete(labels = label_wrap_15)  # Wrap at 15 characters
+    }
+    
     p <- p + theme(
-      plot.margin = margin(1, 1.5, 1.5, 1.2, "cm"),  # Increase margin of the plot
+      plot.margin = margin(1, 1.5, 1.5, left_margin, "cm"),  # Conditionally set left margin
       plot.title = element_text(vjust = 2, size = font_size_value + 4, family = font_family, face = "bold"),  # Set font family and make it bold
       axis.text.y = element_text(size = font_size_value,  # Conditionally set font size
                                  margin = margin(t = 10, r = 10, b = 10, l = 10),  # Add space around labels
                                  family = font_family,
-                                 face = "bold"), # Set font family for y-axis text
-      axis.title.x=element_blank(), 
-      axis.title.y=element_blank(),
+                                 face = "bold"),  # Set font family for y-axis text
+      axis.title.x = element_blank(), 
+      axis.title.y = element_blank(),
       axis.text.x = element_blank(),
       axis.ticks.x = element_blank(),
       axis.line.x = element_blank(),
-      legend.title=element_text(size=font_size_value, family = font_family, face = "bold"), 
-      legend.text=element_text(size=font_size_value, family = font_family)
+      legend.title = element_text(size = font_size_value, family = font_family, face = "bold"), 
+      legend.text = element_text(size = font_size_value, family = font_family)
     )
+    
   }
   
   # by default set position of legend to top left
@@ -529,13 +586,13 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
       
       # Determine label size based on the number of rounds and choice labels
       if (num_choices <= 3) {
-        label_size <- 3.5
+        label_size <- 4.3
       } else if (num_choices <= 6) {
-        label_size <- 3.2
+        label_size <- 4
       } else if (num_choices <= 10) {
-        label_size <- 2.5
+        label_size <- 3.2
       } else {
-        label_size <- 2.3
+        label_size <- 3
       }
       
       if (!is.na(params$data_label_size)) {
@@ -555,13 +612,13 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
       # Determine adj_val based on the number of rounds and choice labels
       if (num_choices <= 3) {
         adj_val <- 4 + 0.5 * (3 - num_choices)
-        label_size <- 3.5
+        label_size <- 4.3
       } else if (num_choices <= 6) {
         adj_val <- 4 + 0.35 * (6 - num_choices)  # Increased base value for 4-6 groups
-        label_size <- 3.2
+        label_size <- 4
       } else {
         adj_val <- 3 - 0.25 * (num_rounds - 2)
-        label_size <- 2.3
+        label_size <- 2.7
       }
       
       if (!is.na(params$data_label_size)) {
@@ -583,13 +640,13 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
       
       # Determine label size based on the number of rounds and choice labels
       if (num_choices <= 3) {
-        label_size <- 3.5
+        label_size <- 4.3
       } else if (num_choices <= 6) {
-        label_size <- 3.2
+        label_size <- 4
       } else if (num_choices <= 10) {
-        label_size <- 2.5
+        label_size <- 3.2
       } else {
-        label_size <- 2.3
+        label_size <- 2.7
       }
       
       if (!is.na(params$data_label_size)) {
@@ -618,7 +675,7 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
   if (angle_value == 0) {
     p <- p + scale_x_discrete(labels = label_wrap_8)  # Wrap at 8 characters
   } else {
-    p <- p + scale_x_discrete(labels = label_wrap(width = 30))
+    p <- p + scale_x_discrete(labels = label_wrap(width = 15))
   }
   
   # for horizontal graphs
@@ -745,12 +802,6 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
     # Apply the coord_cartesian to set the xlim
     p <- p + coord_cartesian(xlim = c(NA, new_xlim_upper))
 
-    # Add custom y-axis labels
-    if (angle_value == 0) {
-      p <- p + scale_y_discrete(labels = label_wrap_15)  # Wrap at 15 characters
-    } else {
-      p <- p + scale_y_discrete(labels = label_wrap(width = 30))
-    }
   }
 
   p <- p + guides(fill = guide_legend(keyheight = unit(0.4, "cm"), keywidth = unit(0.4, "cm")))
@@ -799,7 +850,7 @@ create_bar_graph <- function(data_df, params_df, round_latest, output_folder, co
     }
     
     # Assign ranks
-    filtered_df <- assign_ranks(filtered_df, custom_order, custom_order2, top_n, graph_type)
+    filtered_df <- assign_ranks(filtered_df, custom_order, custom_order2, top_n, graph_type, params)
     
     # Calculate num_rounds
     num_rounds <- length(unique(filtered_df$round))
