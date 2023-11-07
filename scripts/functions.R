@@ -782,6 +782,7 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
     # Determine the maximum result value for the choice labels
     max_result_value <- max(filtered_df$result)
 
+    if(!is.na(max_result_value)) {
     # Conditionally set the xlim
     if (max_result_value > 1000) {
       new_xlim_upper <- 1200
@@ -797,6 +798,10 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
       new_xlim_upper <- 0.4 
     } else {
       new_xlim_upper <- 0.2
+    }
+    } else{
+      paste0("Error: no results for question_code ", filtered_df$question_code)
+      
     }
     
     # Apply the coord_cartesian to set the xlim
