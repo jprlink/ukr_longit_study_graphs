@@ -393,7 +393,18 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
     
   # define plot width and height manually if specified in parameter input
   if(!is.na(params$plot_width)) {
-    plot_width <- as.numeric(params$plot_width)
+    
+    if (graph_type == "bar_vertical") {
+     
+      plot_width <- as.numeric(params$plot_width)
+      
+    } else if (graph_type == "bar_horizontal") {
+    
+      new_xlim_upper <- as.numeric(params$plot_width)
+    }
+  } else {
+    
+    new_xlim_upper <- NULL
   }
   
   if(!is.na(params$plot_height)) {
@@ -516,7 +527,7 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
     num_y_labels <- length(unique(filtered_df$choice_label))
     
     # Conditionally set left margin based on y-axis labels
-    if (num_y_labels > 10 && max_y_label_length > 30) {
+    if (num_y_labels > 10 || max_y_label_length > 30) {
       left_margin <- 2  # Increase margin
       p <- p + scale_y_discrete(labels = label_wrap(width = 30))
     } else {
@@ -689,9 +700,6 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
     ) + scale_fill_manual(values = chosen_palette, 
                           labels = legend_labels)# Custom legend
     
-    # Change legend order
-    p <- p + guides(fill = guide_legend(reverse = TRUE))
-    
     # Add data labels based on conditions and params$data_labels
     if (is.na(params$data_labels)) {
       # Default behavior: Show labels only for the latest round
@@ -779,6 +787,7 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
                                 expand = expansion(mult = c(0, 0.1))
                                 )
     
+    if(is.null(new_xlim_upper)) {
     # Determine the maximum result value for the choice labels
     max_result_value <- max(filtered_df$result)
 
@@ -793,7 +802,7 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
     } else if (max_result_value > 60) {
       new_xlim_upper <- 0.8 
     } else if (max_result_value > 40) {
-      new_xlim_upper <- 0.5 
+      new_xlim_upper <- 0.6 
     } else if (max_result_value > 20) {
       new_xlim_upper <- 0.4 
     } else {
@@ -803,13 +812,15 @@ customize_plot <- function(p, filtered_df, params, num_choices, num_title_lines,
       paste0("Error: no results for question_code ", filtered_df$question_code)
       
     }
+    }
     
     # Apply the coord_cartesian to set the xlim
     p <- p + coord_cartesian(xlim = c(NA, new_xlim_upper))
 
   }
 
-  p <- p + guides(fill = guide_legend(keyheight = unit(0.4, "cm"), keywidth = unit(0.4, "cm")))
+  # Change legend order
+  p <- p + guides(fill = guide_legend(reverse = T, keyheight = unit(0.4, "cm"), keywidth = unit(0.4, "cm")))
   
   return(list(customized_plot = p, plot_width = plot_width, adjusted_height = adjusted_height))
 }

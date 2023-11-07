@@ -21,7 +21,7 @@ source("scripts/functions.R")
 ######################### (1) Provide parameters
 
 # Specify latest DC round to be used for graphs
-round_latest <- 16
+round_latest <- 13
 
 # Define range of color palette
 color_start <- "#44546A"
@@ -155,5 +155,9 @@ df_long %>%
 
 df_long <- readRDS(sprintf("output/ukr_longit_analysis_table_round_%s_overall.RDS", round_latest))
 
+#check if vars are missing
+df_params$main_variable[!df_params$main_variable %in% df_long$question_code]
+
+# create graphs.
 create_bar_graph(df_long, df_params, round_latest, dir_output_graphs, color_start, color_end, font_family)
 
